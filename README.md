@@ -55,14 +55,6 @@ package mental
 
 import "strconv"
 
-type IState interface {
-	Has(m State) bool
-	Set(m State) State
-	Clear(m State) State
-	Toggle(m State) State
-	String() string
-}
-
 func (i State) Has(m State) bool {
 	return i&m != 0
 }
