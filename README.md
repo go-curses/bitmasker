@@ -1,4 +1,4 @@
-# Bitmasker [![GoDoc](https://go.dev/github.com/go-curses/bitmasker?status.png)](https://go.dev/github.com/go-curses/bitmasker)
+# Bitmasker [![GoDoc](https://pkg.go.dev/github.com/go-curses/bitmasker?status.png)](https://pkg.go.dev/github.com/go-curses/bitmasker)
 
 Bitmasker is a tool used to automate the creation of helper methods when dealing
 with bitmask-type constant flags. Given the name of an unsigned integer type T
