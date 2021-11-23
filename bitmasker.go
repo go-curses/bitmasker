@@ -1,69 +1,83 @@
+// Copyright 2018 Kevin C. Krinke. All rights reserved.
+// Use of this source code is governed by the LGPLv3
+// license that can be found in the LICENSE.md file.
 // Copyright 2014 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// license that can be found in the LICENSE.md file.
 
-// Stringer is a tool to automate the creation of methods that satisfy the fmt.Stringer
-// interface. Given the name of a (signed or unsigned) integer type T that has constants
-// defined, stringer will create a new self-contained Go source file implementing
-//	func (t T) String() string
-// The file is created in the same package and directory as the package that defines T.
-// It has helpful defaults designed for use with go generate.
+// Bitmasker is a tool used to automate the creation of helper methods when
+// dealing with bitmask-type constant flags. Given the name of an unsigned
+// integer type T that has constants defined, bitmasker will create a new
+// self-contained Go source file implementing the BitMask and fmt.Stringer
+// interfaces.
+//    func (t T) Has(m T) bool
+//    func (t T) Set(m T) T
+//    func (t T) Clear(m T) T
+//    func (t T) Toggle(m T) T
+//    func (t T) String() string
+// The file is created in the same package and directory as the package that
+// defines T. It has helpful defaults designed for use with go generate.
 //
-// Stringer works best with constants that are consecutive values such as created using iota,
-// but creates good code regardless. In the future it might also provide custom support for
-// constant sets that are bit patterns.
+// Bitmasker works with constants that are consecutive values created using
+// bit-shifted iota.
 //
 // For example, given this snippet,
 //
-//	package painkiller
+//  package mental
 //
-//	type Pill int
+//  type State uint
 //
-//	const (
-//		Placebo Pill = iota
-//		Aspirin
-//		Ibuprofen
-//		Paracetamol
-//		Acetaminophen = Paracetamol
-//	)
+//  const (
+//    Unconscious State = 0
+//    Conscious   State = (1 << iota)
+//    Meditative
+//    Distracted
+//    Entertained = Distracted
+//  )
 //
 // running this command
 //
-//	stringer -type=Pill
+//  bitmasker -type=State .
 //
-// in the same directory will create the file pill_string.go, in package painkiller,
-// containing a definition of
+// in the same directory will create the file state_bitmask.go, in package mental,
+// containing a definition of the following:
 //
-//	func (Pill) String() string
+//    func (t State) Has(m State) bool
+//    func (t State) Set(m State) State
+//    func (t State) Clear(m State) State
+//    func (t State) Toggle(m State) State
+//    func (t State) String() string
 //
-// That method will translate the value of a Pill constant to the string representation
-// of the respective constant name, so that the call fmt.Print(painkiller.Aspirin) will
-// print the string "Aspirin".
+// The Has method will return true if the State t has the bitmask given as m.
+//
+// The Set method will return a new State mask that includes the original mask
+// combined with the given mask m.
+//
+// The Clear method will return a new State mask that has the original mask with
+// the given mask m removed from it's combined value.
+//
+// The String method will translate the value of a State constant to the string
+// representation of the respective constant name, satisfying the fmt.Stringer
+// interface. A call to fmt.Print(mental.Entertained) will print the string
+// "Distracted".
 //
 // Typically this process would be run using go generate, like this:
 //
-//	//go:generate stringer -type=Pill
+//  //go:generate bitmasker -type=State
 //
 // If multiple constants have the same value, the lexically first matching name will
-// be used (in the example, Acetaminophen will print as "Paracetamol").
+// be used (in the example, Entertained will print as "Distracted").
 //
 // With no arguments, it processes the package in the current directory.
 // Otherwise, the arguments must name a single directory holding a Go package
 // or a set of Go source files that represent a single Go package.
 //
 // The -type flag accepts a comma-separated list of types so a single run can
-// generate methods for multiple types. The default output file is t_string.go,
+// generate methods for multiple types. The default output file is t_bitmask.go,
 // where t is the lower-cased name of the first type listed. It can be overridden
 // with the -output flag.
 //
-// The -linecomment flag tells stringer to generate the text of any line comment, trimmed
-// of leading spaces, instead of the constant name. For instance, if the constants above had a
-// Pill prefix, one could write
-//
-//	PillAspirin // Aspirin
-//
-// to suppress it in the output.
-package main // import "golang.org/x/tools/cmd/stringer"
+package main
 
 import (
 	"bytes"
@@ -86,7 +100,7 @@ import (
 
 var (
 	typeNames   = flag.String("type", "", "comma-separated list of type names; must be set")
-	output      = flag.String("output", "", "output file name; default srcdir/<type>_string.go")
+	output      = flag.String("output", "", "output file name; default srcdir/<type>_bitmask.go")
 	trimprefix  = flag.String("trimprefix", "", "trim the `prefix` from the generated constant names")
 	linecomment = flag.Bool("linecomment", false, "use line comment text as printed text when present")
 	buildTags   = flag.String("tags", "", "comma-separated list of build tags to apply")
@@ -94,18 +108,18 @@ var (
 
 // Usage is a replacement usage function for the flags package.
 func Usage() {
-	fmt.Fprintf(os.Stderr, "Usage of stringer:\n")
-	fmt.Fprintf(os.Stderr, "\tstringer [flags] -type T [directory]\n")
-	fmt.Fprintf(os.Stderr, "\tstringer [flags] -type T files... # Must be a single package\n")
+	fmt.Fprintf(os.Stderr, "Usage of bitmasker:\n")
+	fmt.Fprintf(os.Stderr, "\tbitmasker [flags] -type T [directory]\n")
+	fmt.Fprintf(os.Stderr, "\tbitmasker [flags] -type T files... # Must be a single package\n")
 	fmt.Fprintf(os.Stderr, "For more information, see:\n")
-	fmt.Fprintf(os.Stderr, "\thttps://pkg.go.dev/golang.org/x/tools/cmd/stringer\n")
+	fmt.Fprintf(os.Stderr, "\thttp://go.dev/github.com/go-curses/bitmasker\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	flag.PrintDefaults()
 }
 
 func main() {
 	log.SetFlags(0)
-	log.SetPrefix("stringer: ")
+	log.SetPrefix("bitmasker: ")
 	flag.Usage = Usage
 	flag.Parse()
 	if len(*typeNames) == 0 {
@@ -144,7 +158,7 @@ func main() {
 	g.parsePackage(args, tags)
 
 	// Print the header and package clause.
-	g.Printf("// Code generated by \"stringer %s\"; DO NOT EDIT.\n", strings.Join(os.Args[1:], " "))
+	g.Printf("// Code generated by \"bitmasker %s\"; DO NOT EDIT.\n", strings.Join(os.Args[1:], " "))
 	g.Printf("\n")
 	g.Printf("package %s", g.pkg.name)
 	g.Printf("\n")
@@ -161,7 +175,7 @@ func main() {
 	// Write to file.
 	outputName := *output
 	if outputName == "" {
-		baseName := fmt.Sprintf("%s_string.go", types[0])
+		baseName := fmt.Sprintf("%s_bitmask.go", types[0])
 		outputName = filepath.Join(dir, strings.ToLower(baseName))
 	}
 	err := ioutil.WriteFile(outputName, src, 0644)
@@ -265,6 +279,11 @@ func (g *Generator) generate(typeName string) {
 	if len(values) == 0 {
 		log.Fatalf("no values defined for type %s", typeName)
 	}
+
+	// Generate the Bitmask interface implementation before the Stringer
+	// implementation and related constants.
+	g.buildMasker(typeName)
+
 	// Generate code that will fail if the constants change value.
 	g.Printf("func _() {\n")
 	g.Printf("\t// An \"invalid array index\" compiler error signifies that the constant values have changed.\n")
@@ -652,4 +671,33 @@ const stringMap = `func (i %[1]s) String() string {
 	}
 	return "%[1]s(" + strconv.FormatInt(int64(i), 10) + ")"
 }
+`
+
+// buildMasker handles generating the Bitmask interface implementation code.
+func (g *Generator) buildMasker(typeName string) {
+	g.Printf(stringMasker, typeName)
+}
+
+// Argument to format is the type name.
+const stringMasker = `
+// Has returns TRUE if the given flag is present in the bitmask
+func (i %[1]s) Has(m %[1]s) bool {
+	return i&m != 0
+}
+
+// Set returns the bitmask with the given flag set
+func (i %[1]s) Set(m %[1]s) %[1]s {
+	return i | m
+}
+
+// Clear returns the bitmask with the given flag removed
+func (i %[1]s) Clear(m %[1]s) %[1]s {
+	return i &^ m
+}
+
+// Toggle returns the bitmask with the given flag toggled
+func (i %[1]s) Toggle(m %[1]s) %[1]s {
+	return i ^ m
+}
+
 `
