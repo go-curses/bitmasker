@@ -92,8 +92,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/iancoleman/strcase"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -543,7 +546,8 @@ func (g *Generator) createIndexAndNameDecl(run []Value, typeName string, suffix 
 	b := new(bytes.Buffer)
 	indexes := make([]int, len(run))
 	for i := range run {
-		b.WriteString(run[i].name)
+		name := g.normalizeStringValue(typeName, run[i].name)
+		b.WriteString(name)
 		indexes[i] = b.Len()
 	}
 	nameConst := fmt.Sprintf("_%s_name%s = %q", typeName, suffix, b.String())
@@ -621,29 +625,34 @@ const stringOneRunWithOffset = `func (i %[1]s) String() string {
 func (g *Generator) buildMultipleRuns(runs [][]Value, typeName string) {
 	g.Printf("\n")
 	g.declareIndexAndNameVars(runs, typeName)
-	g.Printf("func (i %s) String() string {\n", typeName)
-	g.Printf("\tswitch {\n")
+	g.Printf("func (i %s) String() (value string) {\n", typeName)
+	g.Printf("\tupdate := func(t %s, n string) {\n", typeName)
+	g.Printf("\t\tif i.Has(t) {\n")
+	g.Printf("\t\t\tif len(value) > 0 {\n")
+	g.Printf("\t\t\t\tvalue += \" | \"\n")
+	g.Printf("\t\t\t}\n")
+	g.Printf("\t\t\tvalue += n\n")
+	g.Printf("\t\t}\n")
+	g.Printf("\t}\n")
 	for i, values := range runs {
 		if len(values) == 1 {
-			g.Printf("\tcase i == %s:\n", &values[0])
-			g.Printf("\t\treturn _%s_name_%d\n", typeName, i)
+			g.Printf("\tupdate(%s, _%s_name_%d)\n", &values[0], typeName, i)
 			continue
 		}
-		if values[0].value == 0 && !values[0].signed {
-			// For an unsigned lower bound of 0, "0 <= i" would be redundant.
-			g.Printf("\tcase i <= %s:\n", &values[len(values)-1])
-		} else {
-			g.Printf("\tcase %s <= i && i <= %s:\n", &values[0], &values[len(values)-1])
+		for j, val := range values {
+			g.Printf(
+				"\tupdate(%s(%v), _%s_name_%d[_%s_index_%d[%d]:_%s_index_%d[%d+1]])\n",
+				typeName, val.value,
+				typeName, i,
+				typeName, i, j,
+				typeName, i, j,
+			)
 		}
-		if values[0].value != 0 {
-			g.Printf("\t\ti -= %s\n", &values[0])
-		}
-		g.Printf("\t\treturn _%s_name_%d[_%s_index_%d[i]:_%s_index_%d[i+1]]\n",
-			typeName, i, typeName, i, typeName, i)
 	}
-	g.Printf("\tdefault:\n")
+	g.Printf("\tif value == \"\" {\n")
 	g.Printf("\t\treturn \"%s(\" + strconv.FormatInt(int64(i), 10) + \")\"\n", typeName)
 	g.Printf("\t}\n")
+	g.Printf("\treturn\n")
 	g.Printf("}\n")
 }
 
@@ -676,6 +685,48 @@ const stringMap = `func (i %[1]s) String() string {
 // buildMasker handles generating the Bitmask interface implementation code.
 func (g *Generator) buildMasker(typeName string) {
 	g.Printf(stringMasker, typeName)
+}
+
+func (g *Generator) normalizeStringValue(typeName, value string) (normalized string) {
+	snakeTypeName := strcase.ToSnake(typeName)
+	partsTypeName := strings.Split(snakeTypeName, "_")
+	numPartsTypeName := len(partsTypeName)
+	foundTypeName := ""
+	foundBaseName := ""
+	if numPartsTypeName > 1 {
+		last := numPartsTypeName - 1
+		foundBaseName = partsTypeName[0]
+		switch partsTypeName[last] {
+		case "type", "types", "flag", "flags":
+			lastLen := len(partsTypeName[last]) + 1 // trim _ too
+			foundTypeName = snakeTypeName[:lastLen]
+		}
+	}
+	if foundTypeName != "" {
+		pattern := fmt.Sprintf(`^(?i)%s`, foundTypeName)
+		rx := regexp.MustCompile(pattern)
+		if rx.MatchString(value) {
+			normalized = rx.ReplaceAllString(value, "")
+		} else {
+			normalized = value
+		}
+	} else {
+		normalized = value
+	}
+	if foundBaseName != "" {
+		pattern := fmt.Sprintf(`^(?i)%s`, foundBaseName)
+		rx := regexp.MustCompile(pattern)
+		if rx.MatchString(normalized) {
+			normalized = rx.ReplaceAllString(normalized, "")
+		}
+	}
+	normalized = strcase.ToKebab(normalized)
+	if len(normalized) > 0 {
+		if normalized[0] == '-' {
+			normalized = normalized[1:]
+		}
+	}
+	return
 }
 
 // Argument to format is the type name.
