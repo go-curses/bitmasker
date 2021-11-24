@@ -287,7 +287,7 @@ func (g *Generator) generate(typeName string) {
 	// Generate code that will fail if the constants change value.
 	g.Printf("func _() {\n")
 	g.Printf("\t// An \"invalid array index\" compiler error signifies that the constant values have changed.\n")
-	g.Printf("\t// Re-run the stringer command to generate them again.\n")
+	g.Printf("\t// Re-run the bitmasker command to generate them again.\n")
 	g.Printf("\tvar x [1]struct{}\n")
 	for _, v := range values {
 		g.Printf("\t_ = x[%s - %s]\n", v.originalName, v.str)
