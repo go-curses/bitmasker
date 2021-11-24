@@ -523,7 +523,7 @@ func (g *Generator) declareIndexAndNameVars(runs [][]Value, typeName string) {
 	g.Printf(")\n\n")
 
 	if len(indexes) > 0 {
-		g.Printf("var (")
+		g.Printf("var (\n")
 		for _, index := range indexes {
 			g.Printf("\t%s\n", index)
 		}
