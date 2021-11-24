@@ -733,6 +733,9 @@ func (g *Generator) normalizeStringValue(typeName, value string) (normalized str
 const stringMasker = `
 // Has returns TRUE if the given flag is present in the bitmask
 func (i %[1]s) Has(m %[1]s) bool {
+	if i == m {
+		return true
+	}
 	return i&m != 0
 }
 
