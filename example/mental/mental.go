@@ -10,3 +10,13 @@ const (
 	Distracted
 	Entertained = Distracted
 )
+
+//go:generate bitmasker -kebab -type=ThingFlags
+type ThingFlags uint
+
+const (
+	ThingZeroFlag ThingFlags = 0
+	ThingOneFlag  ThingFlags = 1 << iota
+	ThingTwoFlag
+	ThingNopFlag = ThingTwoFlag
+)
