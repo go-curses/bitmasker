@@ -283,10 +283,6 @@ func (g *Generator) generate(typeName string) {
 		log.Fatalf("no values defined for type %s", typeName)
 	}
 
-	// Generate the Bitmask interface implementation before the Stringer
-	// implementation and related constants.
-	g.buildMasker(typeName)
-
 	// Generate code that will fail if the constants change value.
 	g.Printf("func _() {\n")
 	g.Printf("\t// An \"invalid array index\" compiler error signifies that the constant values have changed.\n")
@@ -317,6 +313,9 @@ func (g *Generator) generate(typeName string) {
 	default:
 		g.buildMap(runs, typeName)
 	}
+
+	// Generate the Bitmask interface implementation
+	g.buildMasker(typeName)
 }
 
 // splitIntoRuns breaks the values into runs of contiguous sequences.
