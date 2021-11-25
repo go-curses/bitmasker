@@ -107,6 +107,7 @@ var (
 	trimprefix  = flag.String("trimprefix", "", "trim the `prefix` from the generated constant names")
 	linecomment = flag.Bool("linecomment", false, "use line comment text as printed text when present")
 	buildTags   = flag.String("tags", "", "comma-separated list of build tags to apply")
+	kebab       = flag.Bool("kebab", false, "use-kebab-format for label values (default: CamelCase)")
 )
 
 // Usage is a replacement usage function for the flags package.
@@ -147,7 +148,9 @@ func main() {
 	g := Generator{
 		trimPrefix:  *trimprefix,
 		lineComment: *linecomment,
+		kebabFormat: *kebab,
 	}
+
 	// TODO(suzmue): accept other patterns for packages (directories, list of files, import paths, etc).
 	if len(args) == 1 && isDirectory(args[0]) {
 		dir = args[0]
@@ -204,6 +207,7 @@ type Generator struct {
 
 	trimPrefix  string
 	lineComment bool
+	kebabFormat bool
 }
 
 func (g *Generator) Printf(format string, args ...interface{}) {
@@ -635,7 +639,7 @@ func (g *Generator) buildMultipleRuns(runs [][]Value, typeName string) {
 	g.Printf("\t}\n")
 	for i, values := range runs {
 		if len(values) == 1 {
-			g.Printf("\tupdate(%s, _%s_name_%d)\n", &values[0], typeName, i)
+			g.Printf("\tupdate(%s(%s), _%s_name_%d)\n", typeName, &values[0], typeName, i)
 			continue
 		}
 		for j, val := range values {
@@ -687,43 +691,59 @@ func (g *Generator) buildMasker(typeName string) {
 }
 
 func (g *Generator) normalizeStringValue(typeName, value string) (normalized string) {
+	changed := false
 	snakeTypeName := strcase.ToSnake(typeName)
 	partsTypeName := strings.Split(snakeTypeName, "_")
 	numPartsTypeName := len(partsTypeName)
-	foundTypeName := ""
-	foundBaseName := ""
+	var foundTypesName, foundTypeName, foundBaseName string
 	if numPartsTypeName > 1 {
-		last := numPartsTypeName - 1
 		foundBaseName = partsTypeName[0]
+		last := numPartsTypeName - 1
 		switch partsTypeName[last] {
 		case "type", "types", "flag", "flags":
-			lastLen := len(partsTypeName[last]) + 1 // trim _ too
-			foundTypeName = snakeTypeName[:lastLen]
+			foundTypesName = partsTypeName[last]
+			lenTypesName := len(foundTypesName)
+			if foundTypesName[lenTypesName-1] == 's' {
+				foundTypeName = foundTypesName[:lenTypesName-1]
+			}
 		}
 	}
+	normalized = value
+	if foundTypesName != "" {
+		normalized, changed = g.modifyString(normalized, `(?i)%s$`, foundTypesName)
+	}
 	if foundTypeName != "" {
-		pattern := fmt.Sprintf(`^(?i)%s`, foundTypeName)
-		rx := regexp.MustCompile(pattern)
-		if rx.MatchString(value) {
-			normalized = rx.ReplaceAllString(value, "")
+		normalized, changed = g.modifyString(normalized, `(?i)%s$`, foundTypeName)
+	}
+	if foundBaseName != "" {
+		normalized, changed = g.modifyString(normalized, `^(?i)%s`, foundBaseName)
+	}
+	if changed {
+		if g.kebabFormat {
+			normalized = strcase.ToKebab(normalized)
 		} else {
-			normalized = value
+			normalized = strcase.ToCamel(normalized)
 		}
+	} else if g.kebabFormat {
+		normalized = strcase.ToKebab(normalized)
 	} else {
 		normalized = value
 	}
-	if foundBaseName != "" {
-		pattern := fmt.Sprintf(`^(?i)%s`, foundBaseName)
-		rx := regexp.MustCompile(pattern)
-		if rx.MatchString(normalized) {
-			normalized = rx.ReplaceAllString(normalized, "")
-		}
-	}
-	normalized = strcase.ToKebab(normalized)
 	if len(normalized) > 0 {
 		if normalized[0] == '-' {
 			normalized = normalized[1:]
 		}
+	}
+	return
+}
+
+func (g *Generator) modifyString(input, format string, argv ...interface{}) (output string, changed bool) {
+	output = input
+	pattern := fmt.Sprintf(format, argv...)
+	rx := regexp.MustCompile(pattern)
+	if rx.MatchString(input) {
+		output = rx.ReplaceAllString(input, "")
+		changed = true
 	}
 	return
 }
@@ -752,5 +772,4 @@ func (i %[1]s) Clear(m %[1]s) %[1]s {
 func (i %[1]s) Toggle(m %[1]s) %[1]s {
 	return i ^ m
 }
-
 `
